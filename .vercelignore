@@ -1,0 +1,7 @@
+# Never upload local secrets or build output
+.env*
+*.txt
+Credentia.txt
+.vercel
+.next
+node_modules
