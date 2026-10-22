@@ -12,6 +12,9 @@ export default async function Onboarding() {
   if (!user) redirect("/login");
   const { count } = await supabase.from("members").select("*", { count: "exact", head: true }).eq("user_id", user.id);
   if (count) redirect("/");
+  // Invited users join their organisation automatically.
+  const { data: joined } = await supabase.rpc("accept_invite");
+  if (joined) redirect("/");
 
   return (
     <main className="auth">
@@ -19,13 +22,13 @@ export default async function Onboarding() {
         <i className="x bl" /><i className="x br" />
         <h1 style={{ fontSize: 28 }}>Set up your workspace</h1>
         <p className="page-sub" style={{ marginBottom: 20 }}>
-          Load the demo organisation to explore a full procurement cycle, or start an empty one.
+          No invitation was found for your email. Create your organisation, or load a demo organisation to explore. If a colleague invited you, ask them to check the email address they used.
         </p>
         <ActionForm action={setUpOrg}>
           <div style={{ display: "grid", gap: 14 }}>
             <div>
               <label className="lbl" htmlFor="display_name">Your name</label>
-              <input className="input" id="display_name" name="display_name" defaultValue="A. Procurement Officer" required />
+              <input className="input" id="display_name" name="display_name" placeholder="Your full name" required />
             </div>
             <div className="form-grid">
               <div>

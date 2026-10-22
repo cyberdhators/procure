@@ -18,7 +18,7 @@ export default async function ApprovalQueue() {
   const [{ data: rows }, { data: monthSteps }] = await Promise.all([
     supabase
       .from("requisitions")
-      .select("id, number, title, total_minor, requester_id, departments(name), donors(name), approval_steps(level, status, activated_at)")
+      .select("id, number, title, total_minor, requester_id, departments(name), donors(name), approval_steps(level, status, activated_at, required_role)")
       .eq("org_id", orgId)
       .eq("status", "submitted"),
     supabase.from("approval_steps").select("status").eq("org_id", orgId).gte("acted_at", monthStart.toISOString()),
@@ -26,8 +26,9 @@ export default async function ApprovalQueue() {
 
   const queue = (rows ?? [])
     .map((r) => {
-      const pending = r.approval_steps.find((s) => s.status === "pending");
-      return { ...r, pending, levels: r.approval_steps.length, waiting: daysSince(pending?.activated_at) };
+      const current = r.approval_steps.filter((s) => s.level < 1000);
+      const pending = current.find((s) => s.status === "pending");
+      return { ...r, pending, levels: current.length, waiting: daysSince(pending?.activated_at) };
     })
     .sort((a, b) => b.waiting - a.waiting);
   const overdue = queue.filter((q) => q.waiting > 3).length;
@@ -67,7 +68,7 @@ export default async function ApprovalQueue() {
                     <td className="num">
                       <div className="actions" style={{ justifyContent: "flex-end" }}>
                         <Link className="btn btn-sm" href={`/requisitions/${q.id}`}>Review</Link>
-                        {can("approver") && q.requester_id !== user.id && (
+                        {q.pending && can(q.pending.required_role) && q.requester_id !== user.id && (
                           <ActionForm action={decideRequisition}>
                             <input type="hidden" name="id" value={q.id} />
                             <Submit small primary name="decision" value="approve">Approve</Submit>

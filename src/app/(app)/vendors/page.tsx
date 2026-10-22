@@ -14,7 +14,8 @@ export default async function Vendors() {
     .from("vendors")
     .select("id, number, trading_name, legal_name, status, categories, vendor_documents(expires_on)")
     .eq("org_id", orgId)
-    .order("number");
+    .order("number")
+    .limit(500);
 
   return (
     <>

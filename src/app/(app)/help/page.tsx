@@ -16,7 +16,7 @@ export default function Help() {
     <>
       <Topbar crumbs={[{ label: "Help" }]} />
       <div className="content">
-        <PageHead title="How CORWADO works" sub="The procurement cycle and the controls applied at each step." />
+        <PageHead title="How Cyber Procurement works" sub="The procurement cycle and the controls applied at each step." />
         <div className="grid g-3">
           {FLOW.map(([title, body], i) => (
             <Card key={title} title={`${i + 1}. ${title}`}><p style={{ margin: 0 }}>{body}</p></Card>
@@ -28,6 +28,7 @@ export default function Help() {
             The database rejects edits and deletions of audit entries.
           </p>
         </Card>
+        <p className="help">Cyber Procurement (C-Procurement), developed by cyberdhators.</p>
       </div>
     </>
   );

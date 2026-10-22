@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Bell, CircleQuestionMark } from "lucide-react";
 import { SearchBox } from "./search-box";
 import { getCounts } from "@/lib/context";
 
@@ -8,8 +9,6 @@ export function Card({ title, note, children, className = "" }: {
 }) {
   return (
     <section className={`card ${className}`}>
-      <i className="x bl" />
-      <i className="x br" />
       {(title || note) && (
         <div className="card-head">
           {title && <h2>{title}</h2>}
@@ -42,10 +41,15 @@ export function StatusBadge({ status, label }: { status: string; label?: string 
   return <Badge tone={TONES[key] ?? "grey"}>{text}</Badge>;
 }
 
-export function Kpi({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
+export function Kpi({ label, value, sub, icon, tone }: {
+  label: string; value: ReactNode; sub?: ReactNode; icon?: ReactNode; tone?: "amber" | "red" | "blue";
+}) {
   return (
     <Card>
-      <div className="kpi-label">{label}</div>
+      <div className="kpi-top">
+        <div className="kpi-label">{label}</div>
+        {icon && <div className={`kpi-icon ${tone ?? ""}`}>{icon}</div>}
+      </div>
       <div className="kpi-value">{value}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
     </Card>
@@ -85,15 +89,11 @@ export async function Topbar({ crumbs }: { crumbs: { label: string; href?: strin
       </nav>
       <SearchBox />
       <Link href="/" className="icon-btn" aria-label={`${alerts} items need attention`}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-        </svg>
+        <Bell size={18} strokeWidth={1.8} aria-hidden />
         {alerts > 0 && <span className="bell-count">{alerts}</span>}
       </Link>
       <Link className="icon-btn" href="/help" aria-label="Help">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" /><path d="M12 17h.01" />
-        </svg>
+        <CircleQuestionMark size={18} strokeWidth={1.8} aria-hidden />
       </Link>
     </header>
   );

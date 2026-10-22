@@ -11,7 +11,8 @@ export default async function GoodsReceipts() {
     .from("goods_receipts")
     .select("id, number, status, delivered_on, location, purchase_orders(id, number, vendors(trading_name)), grn_lines(inspection)")
     .eq("org_id", orgId)
-    .order("number", { ascending: false });
+    .order("number", { ascending: false })
+    .limit(500);
 
   return (
     <>

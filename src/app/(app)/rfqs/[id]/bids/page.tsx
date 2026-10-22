@@ -3,7 +3,8 @@ import { getContext } from "@/lib/context";
 import { Badge, Card, PageHead, StatusBadge, Topbar } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { Submit } from "@/components/submit";
-import { recommendAward, submitEvaluation } from "../../../actions";
+import Link from "next/link";
+import { createPoFromAward, recommendAward, submitEvaluation } from "../../../actions";
 import { formatMoney } from "@/lib/money";
 import { scoreBids } from "@/lib/scoring";
 import { humanize } from "@/lib/format";
@@ -19,6 +20,19 @@ export default async function BidComparison({ params }: { params: Promise<{ id: 
     .eq("id", id)
     .maybeSingle();
   if (!q) notFound();
+  const { data: orders } = await supabase.from("purchase_orders").select("id, number").eq("rfq_id", id);
+  const sealed = ["draft", "open"].includes(q.status);
+  if (sealed) {
+    return (
+      <>
+        <Topbar crumbs={[{ label: "Sourcing", href: "/rfqs" }, { label: q.number, href: `/rfqs/${q.id}` }, { label: "Bid comparison" }]} />
+        <div className="content">
+          <PageHead title="Bid comparison" sub={`${q.number}, ${q.title}.`} />
+          <Card><p style={{ margin: 0 }}>Bids are sealed until bidding closes. {q.bids.length} of {q.rfq_invites.length} received so far.</p></Card>
+        </div>
+      </>
+    );
+  }
 
   const criteria = [...q.rfq_criteria].sort((a, b) => a.position - b.position);
   const bids = [...q.bids].sort((a, b) => a.vendors.trading_name.localeCompare(b.vendors.trading_name));
@@ -106,6 +120,14 @@ export default async function BidComparison({ params }: { params: Promise<{ id: 
                     : humanize(q.award_decision ?? "")}</strong>
                 </p>
                 <p className="help">{q.award_justification}</p>
+                {orders?.length ? (
+                  <div className="actions">{orders.map((o) => <Link key={o.id} className="btn" href={`/purchase-orders/${o.id}`}>Open {o.number}</Link>)}</div>
+                ) : q.award_decision === "award" && can("buyer") ? (
+                  <ActionForm action={createPoFromAward}>
+                    <input type="hidden" name="rfq_id" value={q.id} />
+                    <Submit primary>Draft purchase order</Submit>
+                  </ActionForm>
+                ) : null}
               </>
             ) : can("buyer") ? (
               <ActionForm action={recommendAward}>
@@ -113,9 +135,11 @@ export default async function BidComparison({ params }: { params: Promise<{ id: 
                 <label className="lbl" htmlFor="justification">Justification (retained in the procurement file)</label>
                 <textarea className="input" id="justification" name="justification" defaultValue={suggestion} />
                 <div className="radio-row">
-                  {bestBid && (
-                    <label><input type="radio" name="decision" value={`award:${bestBid.vendor_id}`} defaultChecked /> Award to {bestBid.vendors.trading_name}</label>
-                  )}
+                  {bids.map((b) => (
+                    <label key={b.id}>
+                      <input type="radio" name="decision" value={`award:${b.vendor_id}`} defaultChecked={b.id === bestBid?.id} /> Award to {b.vendors.trading_name}
+                    </label>
+                  ))}
                   <label><input type="radio" name="decision" value="split" /> Split award</label>
                   <label><input type="radio" name="decision" value="retender" /> Re-tender</label>
                 </div>
@@ -133,7 +157,7 @@ export default async function BidComparison({ params }: { params: Promise<{ id: 
               {q.evaluators.map((e) => (
                 <div key={e.title}>
                   <span>{e.title}</span>
-                  {e.submitted ? <Badge tone="green">Scored</Badge> : (
+                  {e.submitted ? <Badge tone="green">Scored</Badge> : q.status !== "evaluation" ? <Badge>Not scored</Badge> : (
                     <ActionForm action={submitEvaluation}>
                       <input type="hidden" name="rfq" value={q.id} />
                       <input type="hidden" name="title" value={e.title} />

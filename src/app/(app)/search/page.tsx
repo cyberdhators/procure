@@ -6,7 +6,7 @@ export const metadata = { title: "Search" };
 
 export default async function Search({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q = "" } = await searchParams;
-  const term = q.replace(/[%,()]/g, " ").trim();
+  const term = q.replace(/[%,()"\*:]/g, " ").trim().slice(0, 80);
   const { supabase, orgId } = await getContext();
 
   const like = `%${term}%`;

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { Search } from "lucide-react";
 
 export function SearchBox() {
   const ref = useRef<HTMLInputElement>(null);
@@ -28,11 +29,9 @@ export function SearchBox() {
         if (q) router.push(`/search?q=${encodeURIComponent(q)}`);
       }}
     >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6d706c" strokeWidth="2" aria-hidden>
-        <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
-      </svg>
+      <Search size={15} strokeWidth={2} color="#626d66" aria-hidden />
       <input ref={ref} name="q" placeholder="Search records, POs, vendors" aria-label="Search" />
-      <span className="kbd">⌘K</span>
+      <span className="kbd">Ctrl K</span>
     </form>
   );
 }

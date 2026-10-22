@@ -5,7 +5,8 @@ import { loadInvoiceMatch } from "@/lib/invoice-match";
 import { Card, PageHead, StatusBadge, Topbar } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { Submit } from "@/components/submit";
-import { resolveInvoice } from "../../actions";
+import { markInvoicePaid, resolveInvoice } from "../../actions";
+import { Attachments } from "@/components/attachments";
 import { formatMoney, formatQty } from "@/lib/money";
 import { formatDate, humanize, plural } from "@/lib/format";
 
@@ -125,6 +126,23 @@ export default async function Invoice({ params }: { params: Promise<{ id: string
             </Card>
           </div>
         </ActionForm>
+        {["approved_for_payment", "paid"].includes(inv.status) && (
+          <Card title="Payment">
+            <p className="card-note" style={{ marginTop: 0 }}>
+              Approved amount: USD {formatMoney(inv.approved_amount_minor)}.
+              {inv.status === "paid" && ` Paid ${formatDate(inv.paid_on)}, reference ${inv.payment_reference}.`}
+            </p>
+            {inv.status === "approved_for_payment" && can("finance") && (
+              <ActionForm action={markInvoicePaid} className="actions" style={{ alignItems: "flex-end" }}>
+                <input type="hidden" name="id" value={inv.id} />
+                <div><label className="lbl" htmlFor="paid_on">Paid on</label><input className="input" id="paid_on" name="paid_on" type="date" max={new Date().toISOString().slice(0, 10)} defaultValue={new Date().toISOString().slice(0, 10)} /></div>
+                <div style={{ flex: 1 }}><label className="lbl" htmlFor="reference">Payment reference</label><input className="input" id="reference" name="reference" placeholder="Bank transfer reference" required /></div>
+                <Submit primary>Record payment</Submit>
+              </ActionForm>
+            )}
+          </Card>
+        )}
+        <Attachments recordType="invoice" recordId={inv.id} title="Invoice documents" />
       </div>
     </>
   );

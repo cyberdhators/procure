@@ -12,7 +12,8 @@ export default async function Requisitions() {
     .from("requisitions")
     .select("id, number, title, status, total_minor, requester_label, created_at, departments(name), donors(name)")
     .eq("org_id", orgId)
-    .order("number", { ascending: false });
+    .order("number", { ascending: false })
+    .limit(500);
 
   return (
     <>

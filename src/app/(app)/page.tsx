@@ -1,89 +1,43 @@
 import Link from "next/link";
-import { getContext, getCounts } from "@/lib/context";
+import { FileText, Plus, ShoppingCart, TriangleAlert, Truck } from "lucide-react";
+import { getContext } from "@/lib/context";
 import { Bars, Card, Kpi, PageHead, Stat, Topbar } from "@/components/ui";
-import { formatMoney, formatWhole, lineTotal } from "@/lib/money";
-import { daysSince, plural } from "@/lib/format";
+import { formatMoney, formatWhole } from "@/lib/money";
+import { plural } from "@/lib/format";
 
 export const metadata = { title: "Dashboard" };
 
-const OPEN_PO = ["approved", "issued", "partially_received", "received"];
-const avg = (xs: number[]) => (xs.length ? (xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(1) : "—");
-const days = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 86_400_000;
+type Stats = {
+  open_reqs: number; awaiting_approval: number; open_pos: number; open_po_value: number; pending_grns: number;
+  late_deliveries: number; exceptions: number; exception_value: number; overdue_approvals: number;
+  expiring_docs: number; rfqs_open: number; rfqs_evaluation: number; rfqs_awarded: number; pos_issued: number;
+  invoices_open: number; by_department: { name: string; committed: number }[];
+  cycle_req_to_approval: number | null; cycle_po_to_delivery: number | null; cycle_receipt_to_invoice: number | null;
+  approved_count: number; accepted_grns: number;
+};
+const days = (n: number | null) => (n === null || n === undefined ? "—" : Number(n).toFixed(1));
 
 export default async function Dashboard() {
   const { supabase, orgId } = await getContext();
-  const counts = await getCounts();
-  const today = new Date().toISOString().slice(0, 10);
+  // All totals are computed in Postgres: the REST API caps row sets at 1,000.
+  const { data, error } = await supabase.rpc("dashboard_stats", { p_org: orgId });
+  if (error) throw new Error(error.message);
+  const s = data as Stats;
 
-  const [reqs, pos, rfqs, grns, invoices, budgets, steps] = await Promise.all([
-    supabase.from("requisitions").select("id, status, submitted_at, approval_steps(status, acted_at)").eq("org_id", orgId),
-    supabase.from("purchase_orders").select("id, status, po_date, expected_delivery, po_lines(qty, unit_price_minor)").eq("org_id", orgId),
-    supabase.from("rfqs").select("status").eq("org_id", orgId),
-    supabase.from("goods_receipts").select("status, delivered_on, po_id").eq("org_id", orgId),
-    supabase.from("invoices").select("status, received_on, po_id, invoice_lines(qty, unit_price_minor)").eq("org_id", orgId),
-    supabase.from("budget_lines").select("committed_minor, departments(name)").eq("org_id", orgId),
-    supabase.from("approval_steps").select("activated_at").eq("org_id", orgId).eq("status", "pending"),
-  ]);
-
-  const reqRows = reqs.data ?? [];
-  const poRows = pos.data ?? [];
-  const invRows = invoices.data ?? [];
-  const openReqs = reqRows.filter((r) => ["draft", "submitted", "returned"].includes(r.status)).length;
-  const openPos = poRows.filter((p) => OPEN_PO.includes(p.status));
-  const openPoValue = openPos.reduce((a, p) => a + p.po_lines.reduce((s, l) => s + lineTotal(l.qty, l.unit_price_minor), 0), 0);
-  const overdueDeliveries = poRows.filter(
-    (p) => ["issued", "partially_received"].includes(p.status) && p.expected_delivery && p.expected_delivery < today,
-  ).length;
-  const exceptionValue = invRows
-    .filter((i) => i.status === "exception")
-    .reduce((a, i) => a + i.invoice_lines.reduce((s, l) => s + lineTotal(l.qty, l.unit_price_minor), 0), 0);
-  const overdueApprovals = (steps.data ?? []).filter((s) => daysSince(s.activated_at) > 3).length;
-
-  const byDept = new Map<string, number>();
-  for (const b of budgets.data ?? []) {
-    const name = (b.departments as unknown as { name: string } | null)?.name ?? "Unassigned";
-    byDept.set(name, (byDept.get(name) ?? 0) + Number(b.committed_minor));
-  }
-  const deptRows = [...byDept.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([label, value]) => ({ label, value, display: formatWhole(value) }));
-
-  // Cycle times from actual records.
-  const reqToApproval = reqRows
-    .filter((r) => r.status === "approved" && r.submitted_at)
-    .map((r) => {
-      const last = r.approval_steps.map((s) => s.acted_at).filter(Boolean).sort().at(-1);
-      return last ? days(r.submitted_at!, last) : null;
-    })
-    .filter((x): x is number => x !== null);
-  const grnRows = (grns.data ?? []).filter((g) => g.status === "accepted");
-  const poToDelivery = grnRows
-    .map((g) => {
-      const po = poRows.find((p) => p.id === g.po_id);
-      return po?.po_date ? days(po.po_date, g.delivered_on) : null;
-    })
-    .filter((x): x is number => x !== null);
-  const receiptToInvoice = invRows
-    .map((i) => {
-      const g = grnRows.find((x) => x.po_id === i.po_id);
-      return g ? days(g.delivered_on, i.received_on) : null;
-    })
-    .filter((x): x is number => x !== null);
-
-  const rfqRows = rfqs.data ?? [];
+  const deptRows = s.by_department.map((d) => ({ label: d.name, value: Number(d.committed), display: formatWhole(d.committed) }));
   const pipeline = [
-    { label: "Requisitions awaiting approval", value: counts.approvals, href: "/approvals" },
-    { label: "RFQs open", value: rfqRows.filter((r) => r.status === "open").length, href: "/rfqs" },
-    { label: "Bids under evaluation", value: rfqRows.filter((r) => r.status === "evaluation").length, href: "/rfqs" },
-    { label: "Awards recommended", value: rfqRows.filter((r) => r.status === "awarded").length, href: "/rfqs" },
-    { label: "POs issued, not yet received", value: poRows.filter((p) => p.status === "issued").length, href: "/purchase-orders" },
-    { label: "Invoices awaiting match", value: invRows.filter((i) => ["registered", "exception"].includes(i.status)).length, href: "/invoices" },
+    { label: "Requisitions awaiting approval", value: s.awaiting_approval, href: "/approvals" },
+    { label: "RFQs open for bids", value: s.rfqs_open, href: "/rfqs" },
+    { label: "Bids under evaluation", value: s.rfqs_evaluation, href: "/rfqs" },
+    { label: "Awards awaiting a purchase order", value: s.rfqs_awarded, href: "/rfqs" },
+    { label: "POs issued, not yet received", value: s.pos_issued, href: "/purchase-orders" },
+    { label: "Invoices awaiting approval", value: s.invoices_open, href: "/invoices" },
   ];
   const attention = [
-    { label: "Approvals overdue more than 3 days", count: overdueApprovals, href: "/approvals" },
-    { label: "Vendor documents expiring within 30 days", count: counts.expiringDocs, href: "/vendors" },
-    { label: "Deliveries past expected date", count: overdueDeliveries, href: "/purchase-orders" },
-    { label: "Invoice variances above tolerance", count: counts.exceptions, href: "/invoices" },
+    { label: "Approvals overdue more than 3 days", count: s.overdue_approvals, href: "/approvals" },
+    { label: "Vendor documents expiring within 30 days", count: s.expiring_docs, href: "/vendors" },
+    { label: "Deliveries past expected date", count: s.late_deliveries, href: "/purchase-orders" },
+    { label: "Invoice variances above tolerance", count: s.exceptions, href: "/invoices" },
   ];
 
   return (
@@ -96,15 +50,19 @@ export default async function Dashboard() {
           actions={
             <>
               <Link className="btn" href="/reports">Export</Link>
-              <Link className="btn btn-primary" href="/requisitions/new">New requisition</Link>
+              <Link className="btn btn-primary" href="/requisitions/new"><Plus size={16} aria-hidden />New requisition</Link>
             </>
           }
         />
         <div className="grid g-4">
-          <Kpi label="Open requisitions" value={openReqs} sub={`${counts.approvals} awaiting approval`} />
-          <Kpi label="Open purchase orders" value={openPos.length} sub={`USD ${formatMoney(openPoValue)} committed`} />
-          <Kpi label="Pending inspections" value={counts.grns} sub={`${overdueDeliveries} overdue`} />
-          <Kpi label="Invoice exceptions" value={counts.exceptions} sub={`USD ${formatMoney(exceptionValue)} on hold`} />
+          <Kpi label="Open requisitions" value={s.open_reqs} sub={`${s.awaiting_approval} awaiting approval`}
+            icon={<FileText size={17} aria-hidden />} />
+          <Kpi label="Open purchase orders" value={s.open_pos} sub={`USD ${formatMoney(s.open_po_value)} on order`}
+            icon={<ShoppingCart size={17} aria-hidden />} tone="blue" />
+          <Kpi label="Pending inspections" value={s.pending_grns} sub={`${s.late_deliveries} deliveries late`}
+            icon={<Truck size={17} aria-hidden />} tone="amber" />
+          <Kpi label="Invoice exceptions" value={s.exceptions} sub={`USD ${formatMoney(s.exception_value)} on hold`}
+            icon={<TriangleAlert size={17} aria-hidden />} tone="red" />
         </div>
         <div className="grid g-main">
           <Card title="Spend by department" note="USD, committed">
@@ -135,12 +93,12 @@ export default async function Dashboard() {
           </Card>
           <Card title="Average cycle time, days">
             <div className="grid g-3" style={{ gap: 16 }}>
-              <Stat value={avg(reqToApproval)} label="Requisition to approval" />
-              <Stat value={avg(poToDelivery)} label="PO to delivery" />
-              <Stat value={avg(receiptToInvoice)} label="Receipt to invoice" />
+              <Stat value={days(s.cycle_req_to_approval)} label="Requisition to approval" />
+              <Stat value={days(s.cycle_po_to_delivery)} label="PO to delivery" />
+              <Stat value={days(s.cycle_receipt_to_invoice)} label="Receipt to invoice" />
             </div>
             <p className="help">
-              Based on {plural(reqToApproval.length, "approved requisition")} and {plural(grnRows.length, "accepted receipt")}.
+              Based on {plural(s.approved_count, "approved requisition")} and {plural(s.accepted_grns, "accepted receipt")}.
             </p>
           </Card>
         </div>

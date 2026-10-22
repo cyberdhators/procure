@@ -12,7 +12,8 @@ export default async function PurchaseOrders() {
     .from("purchase_orders")
     .select("id, number, title, status, po_date, expected_delivery, vendors(trading_name), po_lines(qty, unit_price_minor)")
     .eq("org_id", orgId)
-    .order("number", { ascending: false });
+    .order("number", { ascending: false })
+    .limit(500);
   const today = new Date().toISOString().slice(0, 10);
 
   return (

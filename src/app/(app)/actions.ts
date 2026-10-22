@@ -180,3 +180,228 @@ export async function setVendorStatus(_: ActionState, d: FormData): Promise<Acti
   revalidatePath("/vendors");
   return { ok: `Vendor ${str(d, "status")}.` };
 }
+
+// ---------------------------------------------------------------- Lifecycle helpers
+
+type Args = Record<string, unknown>;
+
+/** Calls a workflow function and refreshes every page; Postgres errors become form messages. */
+async function run(fn: string, args: Args, ok: string): Promise<ActionState> {
+  const { supabase } = await getContext();
+  const { error } = await supabase.rpc(fn, args);
+  if (error) return { error: error.message };
+  revalidatePath("/", "layout");
+  return { ok };
+}
+
+/** Like run(), but navigates to the record the function created. */
+async function runAndGo(fn: string, args: Args, to: (id: string) => string): Promise<ActionState> {
+  const { supabase } = await getContext();
+  const { data, error } = await supabase.rpc(fn, args);
+  if (error) return { error: error.message };
+  revalidatePath("/", "layout");
+  redirect(to(data as string));
+}
+
+const money = (d: FormData, k: string) => parseMoney(str(d, k));
+const dateOrNull = (d: FormData, k: string) => str(d, k) || null;
+
+// ---------------------------------------------------------------- Settings
+
+export async function addReference(_: ActionState, d: FormData): Promise<ActionState> {
+  const { orgId } = await getContext();
+  return run("add_reference", { p_org: orgId, p_kind: str(d, "kind"), p_name: str(d, "name"), p_title: str(d, "title") },
+    `${str(d, "name")} added.`);
+}
+
+export async function addBudgetLine(_: ActionState, d: FormData): Promise<ActionState> {
+  const { orgId } = await getContext();
+  const amount = money(d, "amount");
+  if (amount === null) return { error: "Enter a valid amount, for example 25000.00." };
+  return run("add_budget_line", {
+    p_org: orgId, p_code: str(d, "code"), p_department: str(d, "department_id") || null,
+    p_project: str(d, "project_id") || null, p_donor: str(d, "donor_id") || null, p_amount_minor: amount,
+  }, "Budget line added.");
+}
+
+export async function setBudgetAmount(_: ActionState, d: FormData): Promise<ActionState> {
+  const amount = money(d, "amount");
+  if (amount === null) return { error: "Enter a valid amount." };
+  return run("set_budget_amount", { p_line: str(d, "id"), p_amount_minor: amount, p_reason: str(d, "reason") }, "Budget revised.");
+}
+
+export async function addApprovalRule(_: ActionState, d: FormData): Promise<ActionState> {
+  const { orgId } = await getContext();
+  const min = str(d, "min_value") ? money(d, "min_value") : null;
+  if (str(d, "min_value") && min === null) return { error: "Enter a valid threshold." };
+  return run("add_approval_rule", {
+    p_org: orgId, p_label: str(d, "label"), p_approver_title: str(d, "approver_title"),
+    p_required_role: str(d, "required_role"), p_min_value_minor: min, p_category: str(d, "category"),
+  }, "Routing rule added.");
+}
+
+export async function deleteApprovalRule(_: ActionState, d: FormData): Promise<ActionState> {
+  return run("delete_approval_rule", { p_rule: str(d, "id") }, "Routing rule removed.");
+}
+
+export async function setOrgControls(_: ActionState, d: FormData): Promise<ActionState> {
+  const { orgId } = await getContext();
+  const limit = money(d, "direct_po_limit");
+  if (limit === null) return { error: "Enter a valid direct purchase limit." };
+  return run("set_org_controls", {
+    p_org: orgId, p_direct_po_limit_minor: limit,
+    p_tolerance_pct: Number(str(d, "tolerance")), p_min_vendors: Number(str(d, "min_vendors")),
+  }, "Controls saved.");
+}
+
+export async function inviteMember(_: ActionState, d: FormData): Promise<ActionState> {
+  const { orgId } = await getContext();
+  return run("invite_member", {
+    p_org: orgId, p_email: str(d, "email"), p_display_name: str(d, "display_name"),
+    p_title: str(d, "title"), p_roles: d.getAll("roles").map(String),
+  }, `Invitation recorded. ${str(d, "email")} joins automatically after signing up with that address.`);
+}
+
+export async function setMemberRoles(_: ActionState, d: FormData): Promise<ActionState> {
+  const { orgId } = await getContext();
+  return run("set_member_roles", {
+    p_org: orgId, p_user: str(d, "user_id"), p_title: str(d, "title"), p_roles: d.getAll("roles").map(String),
+  }, "Roles updated.");
+}
+
+export async function removeMember(_: ActionState, d: FormData): Promise<ActionState> {
+  const { orgId } = await getContext();
+  return run("remove_member", { p_org: orgId, p_user: str(d, "user_id") }, "Member removed.");
+}
+
+export async function addVendorDocument(_: ActionState, d: FormData): Promise<ActionState> {
+  return run("add_vendor_document", {
+    p_vendor: str(d, "vendor_id"), p_name: str(d, "name"), p_expires_on: dateOrNull(d, "expires_on"),
+  }, "Document recorded.");
+}
+
+// ---------------------------------------------------------------- Sourcing and ordering
+
+export async function createRfq(_: ActionState, d: FormData): Promise<ActionState> {
+  const closes = str(d, "closes_at");
+  if (!closes) return { error: "Set a closing date and time." };
+  return runAndGo("create_rfq", {
+    p_req: str(d, "requisition_id"), p_closes_at: new Date(closes).toISOString(),
+    p_location: str(d, "location"), p_terms: str(d, "terms"),
+  }, (id) => `/rfqs/${id}`);
+}
+
+export async function createDirectPo(_: ActionState, d: FormData): Promise<ActionState> {
+  if (!str(d, "vendor_id")) return { error: "Choose a vendor." };
+  return runAndGo("create_direct_po", { p_req: str(d, "requisition_id"), p_vendor: str(d, "vendor_id") },
+    (id) => `/purchase-orders/${id}`);
+}
+
+export async function inviteVendor(_: ActionState, d: FormData): Promise<ActionState> {
+  if (!str(d, "vendor_id")) return { error: "Choose a vendor." };
+  return run("invite_vendor", { p_rfq: str(d, "rfq_id"), p_vendor: str(d, "vendor_id") }, "Vendor invited.");
+}
+
+export async function openRfq(_: ActionState, d: FormData): Promise<ActionState> {
+  return run("open_rfq", { p_rfq: str(d, "rfq_id") }, "RFQ is open for bids.");
+}
+
+export async function closeRfq(_: ActionState, d: FormData): Promise<ActionState> {
+  return run("close_rfq", { p_rfq: str(d, "rfq_id") }, "Bidding closed. Evaluation can start.");
+}
+
+export async function recordBid(_: ActionState, d: FormData): Promise<ActionState> {
+  const total = money(d, "total");
+  if (total === null) return { error: "Enter the quoted total, for example 17950.00." };
+  const scores: Record<string, { score: number; note: string }> = {};
+  for (const cid of d.getAll("criterion_id").map(String)) {
+    const raw = str(d, `score_${cid}`);
+    if (raw === "" || Number.isNaN(Number(raw))) return { error: "Score every criterion." };
+    scores[cid] = { score: Number(raw), note: str(d, `note_${cid}`) };
+  }
+  return run("record_bid", {
+    p_rfq: str(d, "rfq_id"), p_vendor: str(d, "vendor_id"), p_total_minor: total,
+    p_validity_days: Number(str(d, "validity")), p_scores: scores,
+  }, "Bid recorded.");
+}
+
+export async function createPoFromAward(_: ActionState, d: FormData): Promise<ActionState> {
+  return runAndGo("create_po_from_award", { p_rfq: str(d, "rfq_id") }, (id) => `/purchase-orders/${id}`);
+}
+
+export async function savePoDraft(_: ActionState, d: FormData): Promise<ActionState> {
+  const lines: { id: string; unit_price_minor: number }[] = [];
+  for (const id of d.getAll("line_id").map(String)) {
+    const price = money(d, `price_${id}`);
+    if (price === null) return { error: "Enter a valid unit price on every line." };
+    lines.push({ id, unit_price_minor: price });
+  }
+  return run("save_po_draft", {
+    p_po: str(d, "po_id"), p_lines: lines, p_expected: dateOrNull(d, "expected_delivery"),
+    p_location: str(d, "delivery_location"), p_terms: str(d, "payment_terms"),
+  }, "Draft saved.");
+}
+
+export async function approvePo(_: ActionState, d: FormData): Promise<ActionState> {
+  return run("approve_po", { p_po: str(d, "po_id") }, "Purchase order approved.");
+}
+
+export async function issuePo(_: ActionState, d: FormData): Promise<ActionState> {
+  return run("issue_po", { p_po: str(d, "po_id") }, "Purchase order issued to the vendor.");
+}
+
+export async function createGoodsReceipt(_: ActionState, d: FormData): Promise<ActionState> {
+  return runAndGo("create_goods_receipt", {
+    p_po: str(d, "po_id"), p_delivered_on: str(d, "delivered_on") || new Date().toISOString().slice(0, 10),
+    p_location: str(d, "location"),
+  }, (id) => `/goods-receipts/${id}`);
+}
+
+export async function registerInvoice(_: ActionState, d: FormData): Promise<ActionState> {
+  const lines: { po_line_id: string; qty: number; unit_price_minor: number }[] = [];
+  for (const id of d.getAll("po_line_id").map(String)) {
+    const qty = Number(str(d, `qty_${id}`) || 0);
+    const price = money(d, `price_${id}`);
+    if (Number.isNaN(qty) || qty < 0) return { error: "Quantities must be zero or more." };
+    if (price === null) return { error: "Enter a valid unit price on every line." };
+    lines.push({ po_line_id: id, qty, unit_price_minor: price });
+  }
+  return runAndGo("register_invoice", {
+    p_po: str(d, "po_id"), p_vendor_ref: str(d, "vendor_ref"), p_invoice_date: str(d, "invoice_date"), p_lines: lines,
+  }, (id) => `/invoices/${id}`);
+}
+
+export async function markInvoicePaid(_: ActionState, d: FormData): Promise<ActionState> {
+  return run("mark_invoice_paid", {
+    p_invoice: str(d, "id"), p_paid_on: str(d, "paid_on"), p_reference: str(d, "reference"),
+  }, "Payment recorded.");
+}
+
+// ---------------------------------------------------------------- Attachments
+
+const MAX_UPLOAD = 4 * 1024 * 1024;
+
+export async function uploadAttachment(_: ActionState, d: FormData): Promise<ActionState> {
+  const { supabase, orgId } = await getContext();
+  const file = d.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
+  if (file.size > MAX_UPLOAD) return { error: "Files must be 4 MB or smaller." };
+  const recordType = str(d, "record_type");
+  const recordId = str(d, "record_id");
+  const safeName = file.name.replace(/[^\w.\- ]+/g, "_").slice(-120);
+  const path = `${orgId}/${recordType}/${recordId}/${crypto.randomUUID()}-${safeName}`;
+
+  const { error: upErr } = await supabase.storage.from("attachments").upload(path, file, {
+    contentType: file.type || "application/octet-stream",
+  });
+  if (upErr) return { error: `Upload failed: ${upErr.message}` };
+  const { error } = await supabase.rpc("add_attachment", {
+    p_org: orgId, p_record_type: recordType, p_record_id: recordId, p_name: file.name, p_size: file.size, p_path: path,
+  });
+  if (error) {
+    await supabase.storage.from("attachments").remove([path]);
+    return { error: error.message };
+  }
+  revalidatePath("/", "layout");
+  return { ok: `${file.name} attached.` };
+}

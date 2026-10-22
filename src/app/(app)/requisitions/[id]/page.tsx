@@ -4,7 +4,8 @@ import { getContext } from "@/lib/context";
 import { Card, Field, PageHead, StatusBadge, Topbar, Badge } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { Submit } from "@/components/submit";
-import { decideRequisition, submitRequisition } from "../../actions";
+import { createDirectPo, createRfq, decideRequisition, submitRequisition } from "../../actions";
+import { Attachments } from "@/components/attachments";
 import { formatMoney, formatQty, lineTotal } from "@/lib/money";
 import { ago, formatDate, humanize } from "@/lib/format";
 
@@ -20,16 +21,24 @@ export default async function RequisitionDetail({ params }: { params: Promise<{ 
     .maybeSingle();
   if (!r) notFound();
 
-  const [{ data: files }, { data: rfqs }] = await Promise.all([
-    supabase.from("attachments").select("id, name, size_bytes").eq("record_type", "requisition").eq("record_id", id),
+  const [{ data: files }, { data: rfqs }, { data: pos }, { data: org }, { data: vendors }] = await Promise.all([
+    supabase.from("attachments").select("id").eq("record_type", "requisition").eq("record_id", id),
     supabase.from("rfqs").select("id, number, status").eq("requisition_id", id),
+    supabase.from("purchase_orders").select("id, number, status").eq("requisition_id", id),
+    supabase.from("orgs").select("direct_po_limit_minor").eq("id", r.org_id).single(),
+    supabase.from("vendors").select("id, trading_name").eq("org_id", r.org_id).eq("status", "approved").order("trading_name"),
   ]);
 
   const lines = [...r.requisition_lines].sort((a, b) => a.line_no - b.line_no);
-  const steps = [...r.approval_steps].sort((a, b) => a.level - b.level);
+  // Levels >= 1000 are archived rounds from before a return and resubmission.
+  const steps = r.approval_steps.filter((s) => s.level < 1000).sort((a, b) => a.level - b.level);
+  const priorRounds = r.approval_steps.filter((s) => s.level >= 1000 && s.acted_at).sort((a, b) => a.acted_at.localeCompare(b.acted_at));
+  const sourced = rfqs?.some((q) => q.status !== "cancelled") || pos?.some((p) => p.status !== "cancelled");
+  const canSource = r.status === "approved" && !sourced && can("buyer");
+  const directAllowed = Number(r.total_minor) <= Number(org?.direct_po_limit_minor ?? 0);
   const pending = steps.find((s) => s.status === "pending");
   const isMine = r.requester_id === user.id;
-  const canDecide = r.status === "submitted" && can("approver") && !isMine;
+  const canDecide = r.status === "submitted" && !!pending && can(pending.required_role) && !isMine;
   const budget = r.budget_lines;
   const remaining = budget ? Number(budget.amount_minor) - Number(budget.committed_minor) : null;
 
@@ -102,6 +111,42 @@ export default async function RequisitionDetail({ params }: { params: Promise<{ 
               </div>
             </Card>
 
+            {canSource && (
+              <Card title="Source this requisition">
+                <div className="grid g-2" style={{ gap: 18 }}>
+                  <ActionForm action={createRfq}>
+                    <input type="hidden" name="requisition_id" value={r.id} />
+                    <h3 style={{ fontSize: 16, marginBottom: 8 }}>Request for quotation</h3>
+                    <label className="lbl" htmlFor="closes_at">Bids close</label>
+                    <input className="input" id="closes_at" name="closes_at" type="datetime-local" required />
+                    <label className="lbl" htmlFor="location" style={{ marginTop: 10 }}>Delivery location</label>
+                    <input className="input" id="location" name="location" placeholder="Central warehouse" />
+                    <label className="lbl" htmlFor="terms" style={{ marginTop: 10 }}>Specifications and terms</label>
+                    <textarea className="input" id="terms" name="terms" placeholder="Quote unit prices inclusive of delivery…" />
+                    <div style={{ marginTop: 12 }}><Submit primary>Create RFQ</Submit></div>
+                  </ActionForm>
+                  <ActionForm action={createDirectPo}>
+                    <input type="hidden" name="requisition_id" value={r.id} />
+                    <h3 style={{ fontSize: 16, marginBottom: 8 }}>Direct purchase</h3>
+                    {directAllowed ? (
+                      <>
+                        <label className="lbl" htmlFor="vendor_id">Vendor</label>
+                        <select className="input" id="vendor_id" name="vendor_id" required defaultValue="">
+                          <option value="" disabled>Select an approved vendor…</option>
+                          {vendors?.map((v) => <option key={v.id} value={v.id}>{v.trading_name}</option>)}
+                        </select>
+                        <div style={{ marginTop: 12 }}><Submit>Draft purchase order</Submit></div>
+                      </>
+                    ) : (
+                      <p className="help" style={{ marginTop: 0 }}>
+                        Above the USD {formatMoney(org?.direct_po_limit_minor)} direct purchase limit, so competitive quotations are required.
+                      </p>
+                    )}
+                  </ActionForm>
+                </div>
+              </Card>
+            )}
+
             {r.status === "submitted" && (
               <Card title="Your decision">
                 {canDecide ? (
@@ -119,7 +164,7 @@ export default async function RequisitionDetail({ params }: { params: Promise<{ 
                   <p className="help" style={{ marginTop: 0 }}>
                     {isMine
                       ? "You raised this requisition, so segregation of duties prevents you from approving it."
-                      : "You do not have the approver role."}
+                      : `This level needs the ${pending?.required_role} role.`}
                   </p>
                 )}
               </Card>
@@ -152,19 +197,27 @@ export default async function RequisitionDetail({ params }: { params: Promise<{ 
                 ))}
               </div>
             </Card>
-            <Card title="Attachments">
-              <div className="rows">
-                {(files ?? []).map((f) => (
-                  <div key={f.id}><span>{f.name}</span><span className="card-note">{Math.round(f.size_bytes / 1024)} KB</span></div>
-                ))}
-                {!files?.length && <div className="empty">No attachments.</div>}
-              </div>
-            </Card>
-            {!!rfqs?.length && (
+            <Attachments recordType="requisition" recordId={r.id} canUpload={!["rejected", "cancelled"].includes(r.status)} />
+            {(!!rfqs?.length || !!pos?.length) && (
               <Card title="Sourcing">
                 <div className="rows">
-                  {rfqs.map((q) => (
+                  {rfqs?.map((q) => (
                     <Link key={q.id} href={`/rfqs/${q.id}`}><span>{q.number}</span><Badge>{humanize(q.status)}</Badge></Link>
+                  ))}
+                  {pos?.map((p) => (
+                    <Link key={p.id} href={`/purchase-orders/${p.id}`}><span>{p.number}</span><Badge>{humanize(p.status)}</Badge></Link>
+                  ))}
+                </div>
+              </Card>
+            )}
+            {priorRounds.length > 0 && (
+              <Card title="Earlier approval rounds">
+                <div className="rows">
+                  {priorRounds.map((s) => (
+                    <div key={s.id}>
+                      <span>{s.label}: {s.status}{s.comment ? `. ${s.comment}` : ""}</span>
+                      <span className="card-note">{s.acted_by_label}, {ago(s.acted_at)}</span>
+                    </div>
                   ))}
                 </div>
               </Card>

@@ -5,6 +5,7 @@ import { Card, PageHead, StatusBadge, Topbar } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { Submit } from "@/components/submit";
 import { saveGoodsReceipt } from "../../actions";
+import { Attachments } from "@/components/attachments";
 import { formatQty } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 
@@ -39,7 +40,6 @@ export default async function GoodsReceipt({ params }: { params: Promise<{ id: s
   const lineFor = (poLineId: string) => g.grn_lines.find((l) => l.po_line_id === poLineId);
   const editable = g.status === "draft" && can("receiver");
   const checklist = g.checklist as Record<string, boolean>;
-  const { data: files } = await supabase.from("attachments").select("id, name").eq("record_type", "goods_receipt").eq("record_id", id);
 
   return (
     <>
@@ -133,19 +133,10 @@ export default async function GoodsReceipt({ params }: { params: Promise<{ id: s
                   ))}
                 </div>
               </Card>
-              <Card title="Evidence">
-                <div className="photos">
-                  <div className="photo">Photo 1<br />Pallet on arrival</div>
-                  <div className="photo">Photo 2<br />Batch labels</div>
-                  <div className="photo add">Add photo</div>
-                </div>
-                <div className="rows" style={{ marginTop: 12 }}>
-                  {(files ?? []).map((f) => <div key={f.id}><span>{f.name}</span></div>)}
-                </div>
-              </Card>
             </div>
           </div>
         </ActionForm>
+        <Attachments recordType="goods_receipt" recordId={g.id} title="Evidence: photos and delivery notes" />
       </div>
     </>
   );

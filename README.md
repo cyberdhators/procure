@@ -1,53 +1,52 @@
-# CORWADO e-Procurement
+# Cyber Procurement (C-Procurement)
 
-Multi-tenant procurement SaaS for NGOs and donor-funded organisations: requisitions with
-rule-based approval routing, vendor register, RFQs and weighted bid evaluation, purchase
-orders, goods receipt with inspection, three-way invoice matching, reports and an
-append-only audit log.
+Multi-tenant procurement platform for NGOs and donor-funded organisations. Developed by **cyberdhators**.
 
-**Stack:** Next.js 16 (App Router, server actions) · Supabase (Postgres, Auth, row-level security) · Vercel.
+**Stack:** Next.js 16 (App Router, server actions) · Supabase (Postgres, Auth, Storage, row-level security) · Vercel.
 
-## How it is built
+## The procurement cycle
 
-- **Tenancy.** Every table carries `org_id`; row-level security limits each user to their organisation.
-- **Workflow in the database.** State changes (submit, approve, receive, resolve…) are `SECURITY DEFINER`
-  Postgres functions in `supabase/migrations/0002_workflow.sql`. Each one checks the role, enforces
-  segregation of duties, mutates state and writes the audit entry in one transaction.
-- **Segregation of duties.** Requesters cannot approve their own requisitions, one person cannot approve two
-  levels, a PO's buyer cannot receive against it, and a receiver cannot approve the matching invoice.
-- **Money** is stored as integer minor units (cents).
-- **Audit log** is append-only: a trigger rejects updates and deletes, and users cannot call the logging function directly.
-- **Pure business logic** (bid scoring, three-way match, money) lives in `src/lib` with unit tests.
+| Step | Who | Control |
+|---|---|---|
+| Requisition | requester | Must reference the org's own department/project/donor and an existing budget line |
+| Approval | approver / finance | Routing rules by value, category and donor; each level needs its role; nobody approves their own request or two levels; final approval blocked if the budget line lacks funds |
+| Sourcing | buyer | RFQ above the direct-purchase limit; only approved vendors with valid documents; minimum vendors; sealed bids until close; panel scoring; justified award |
+| Purchase order | buyer drafts, approver approves | Approver ≠ drafter; PO ≤ awarded bid and ≤ requisition + tolerance; issuing trues up the budget commitment |
+| Goods receipt | receiver | Receiver ≠ PO drafter; cumulative quantity ≤ ordered; discrepancies must be described |
+| Invoice | finance | Duplicate supplier numbers rejected; three-way match re-run on every receipt; registrar and receivers cannot approve; payment updates spend and closes the PO |
+
+Every transition is a `SECURITY DEFINER` Postgres function (`supabase/migrations/`) that checks the role, applies
+the rule, changes state and writes the audit entry in one transaction. The audit log rejects updates and deletes.
+Money is stored in integer cents. Dashboards and reports aggregate in SQL.
 
 ## Setup
 
-1. Create a Supabase project. Put these in `.env.local` (and in the Vercel project's environment variables):
-
+1. Create a Supabase project and set, locally in `.env.local` and in Vercel:
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-   POSTGRES_URL_NON_POOLING=postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres
    ```
-
-2. Apply the migrations: `npm run db:migrate`
-   (or paste the files in `supabase/migrations/` into the Supabase SQL editor, in order).
-3. In Supabase → Authentication → URL configuration, set the site URL to your deployment URL.
-4. `npm install && npm run dev`, create an account, then choose **Load demo organisation**.
+2. Apply `supabase/migrations/*.sql` in order: `POSTGRES_URL_NON_POOLING=<session pooler URI> npm run db:migrate`,
+   or paste them into the Supabase SQL editor.
+3. Supabase → Authentication:
+   - URL configuration → Site URL = your production URL; add it to redirect URLs.
+   - Configure custom SMTP (the built-in sender is rate-limited to a few emails per hour).
+4. The first user creates the organisation (or loads the demo) and becomes administrator. Invite colleagues from
+   **Settings → Members**; they join automatically when they sign up with the invited email.
 
 ## Scripts
 
 | Command | |
 |---|---|
-| `npm run dev` | Development server |
-| `npm run build` | Production build |
-| `npm test` | Unit tests for scoring, matching and money |
-| `npm run typecheck` | TypeScript |
-| `npm run db:migrate` | Apply pending SQL migrations |
+| `npm run dev` / `npm run build` | Develop / build |
+| `npm test` | Unit tests: bid scoring, three-way match, money |
+| `npm run test:db` | Database tests on in-memory Postgres: full lifecycle with four users, RLS, SoD, audit |
+| `npm run check` | Typecheck and both test suites (also run in CI) |
+| `npm run db:migrate` | Apply pending migrations |
 
-## Next steps
+## Known limitations
 
-- Generate database types (`supabase gen types typescript`) and re-enable `noImplicitAny`.
-- File uploads to Supabase Storage for attachments and GRN photos.
-- Member invitations and role management UI; approval-rule editor.
-- Scheduled jobs: approval escalation reminders and vendor document expiry alerts.
-- Purchase order creation from an awarded RFQ, and PDF output.
+- One organisation per user; multi-org switching is not built.
+- Purchase order amendments after issue (versioning UI) and credit notes are not built yet.
+- No scheduled jobs yet for approval escalation or document-expiry emails (the dashboard surfaces both).
+- Database types are not generated; `noImplicitAny` is relaxed until `supabase gen types` is added.

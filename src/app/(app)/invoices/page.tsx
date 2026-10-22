@@ -12,13 +12,15 @@ export default async function Invoices() {
     .from("invoices")
     .select("id, number, vendor_ref, status, received_on, purchase_orders(number, vendors(trading_name)), invoice_lines(qty, unit_price_minor)")
     .eq("org_id", orgId)
-    .order("received_on", { ascending: false });
+    .order("received_on", { ascending: false })
+    .limit(500);
 
   return (
     <>
       <Topbar crumbs={[{ label: "Purchasing" }, { label: "Invoice matching" }]} />
       <div className="content">
-        <PageHead title="Invoice matching" sub="Supplier invoices are matched against the purchase order and accepted goods receipts." />
+        <PageHead title="Invoice matching" sub="Supplier invoices are matched against the purchase order and accepted goods receipts."
+          actions={<Link className="btn btn-primary" href="/invoices/new">Register invoice</Link>} />
         <Card className="flush">
           <div className="table-wrap">
             <table className="table">

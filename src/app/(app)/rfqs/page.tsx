@@ -11,7 +11,8 @@ export default async function Rfqs() {
     .from("rfqs")
     .select("id, number, title, status, closes_at, requisitions(number), rfq_invites(status)")
     .eq("org_id", orgId)
-    .order("number", { ascending: false });
+    .order("number", { ascending: false })
+    .limit(500);
 
   return (
     <>

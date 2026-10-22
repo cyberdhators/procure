@@ -22,7 +22,7 @@ export default async function AuditLog({ searchParams }: { searchParams: Promise
     .eq("org_id", orgId)
     .order("at", { ascending: false })
     .range((p - 1) * PAGE, p * PAGE - 1);
-  const term = q.replace(/[%,()]/g, " ").trim();
+  const term = q.replace(/[%,()"\*:]/g, " ").trim().slice(0, 80);
   if (term) {
     query = query.or(`record_label.ilike.%${term}%,actor_label.ilike.%${term}%,action.ilike.%${term}%,detail.ilike.%${term}%`);
   }

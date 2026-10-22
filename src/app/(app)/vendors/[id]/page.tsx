@@ -4,7 +4,8 @@ import { getContext } from "@/lib/context";
 import { Bars, Card, Field, PageHead, Stat, StatusBadge, Topbar } from "@/components/ui";
 import { ActionForm } from "@/components/action-form";
 import { Submit } from "@/components/submit";
-import { setVendorStatus } from "../../actions";
+import { addVendorDocument, setVendorStatus } from "../../actions";
+import { Attachments } from "@/components/attachments";
 import { formatMoney, formatWhole, lineTotal } from "@/lib/money";
 import { daysUntil, formatDate, humanize, plural } from "@/lib/format";
 
@@ -81,6 +82,14 @@ export default async function VendorProfile({ params }: { params: Promise<{ id: 
                 {!v.vendor_documents.length && <tr><td colSpan={3} className="empty">No documents on file.</td></tr>}
               </tbody>
             </table>
+            {can("buyer") && (
+              <ActionForm action={addVendorDocument} className="actions" style={{ marginTop: 12, alignItems: "flex-end" }}>
+                <input type="hidden" name="vendor_id" value={v.id} />
+                <div style={{ flex: 1, minWidth: 160 }}><label className="lbl" htmlFor="doc_name">Document</label><input className="input" id="doc_name" name="name" placeholder="Tax clearance certificate" required /></div>
+                <div><label className="lbl" htmlFor="doc_expiry">Expires (blank if none)</label><input className="input" id="doc_expiry" name="expires_on" type="date" /></div>
+                <Submit small>Add</Submit>
+              </ActionForm>
+            )}
           </Card>
           <Card title="Performance, last 12 months">
             {scores.length ? (
@@ -106,6 +115,7 @@ export default async function VendorProfile({ params }: { params: Promise<{ id: 
             </table>
           </Card>
         </div>
+        <Attachments recordType="vendor" recordId={v.id} title="Vendor files" canUpload={can("buyer")} />
       </div>
     </>
   );
