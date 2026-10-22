@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Confirm your C-Procurement account</title>
+</head>
+<body style="margin:0;padding:0;background:#eef1ef;font-family:Arial,Helvetica,sans-serif;color:#1b1c1b;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1ef;padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #dcdedb;">
+          <tr>
+            <td style="padding:24px 32px;border-bottom:1px solid #dcdedb;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="width:34px;height:34px;background:#2e7d50;color:#ffffff;font-weight:bold;font-size:13px;text-align:center;vertical-align:middle;">CP</td>
+                  <td style="padding-left:12px;">
+                    <div style="font-size:17px;font-weight:bold;">Cyber Procurement</div>
+                    <div style="font-size:11px;letter-spacing:2px;color:#6d706c;">C-PROCUREMENT</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              <h1 style="margin:0 0 12px;font-size:22px;">Confirm your email address</h1>
+              <p style="margin:0 0 20px;font-size:15px;line-height:1.55;color:#3c3f3b;">
+                You created a C-Procurement account with <strong>{{ .Email }}</strong>. Confirm this address to
+                sign in. If a colleague invited you, you will join their organisation automatically.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+                <tr>
+                  <td style="background:#2e7d50;">
+                    <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:12px 22px;color:#ffffff;font-size:15px;font-weight:bold;text-decoration:none;">Confirm email address</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#6d706c;">
+                If the button does not work, copy this link into your browser:
+              </p>
+              <p style="margin:0 0 24px;font-size:12px;line-height:1.5;word-break:break-all;">
+                <a href="{{ .ConfirmationURL }}" style="color:#2a6a45;">{{ .ConfirmationURL }}</a>
+              </p>
+              <p style="margin:0;font-size:13px;line-height:1.5;color:#6d706c;">
+                Did not sign up? You can ignore this email; no account is activated without confirmation.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 32px;border-top:1px solid #dcdedb;font-size:12px;color:#9a9d99;">
+              Cyber Procurement · <a href="https://cprocurement.dev" style="color:#9a9d99;">cprocurement.dev</a> · Developed by <strong>cyberdhators</strong>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
