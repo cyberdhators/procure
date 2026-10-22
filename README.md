@@ -42,6 +42,8 @@ Money is stored in integer cents. Dashboards and reports aggregate in SQL.
 | `npm test` | Unit tests: bid scoring, three-way match, money |
 | `npm run test:db` | Database tests on in-memory Postgres: full lifecycle with four users, RLS, SoD, audit |
 | `npm run check` | Typecheck and both test suites (also run in CI) |
+| `npm run test:e2e` | Browser test of the full cycle on the live site with four throwaway users (needs `SUPABASE_SECRET_KEY` in `.env.local`; cleans up after itself) |
+| `npm run test:e2e:cleanup` | Removes leftovers from an interrupted browser test run |
 | `npm run db:migrate` | Apply pending migrations |
 
 ## Known limitations

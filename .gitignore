@@ -12,3 +12,7 @@ next-env.d.ts
 
 Credentia.txt
 *.txt
+
+# Playwright
+test-results/
+playwright-report/

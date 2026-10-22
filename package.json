@@ -11,7 +11,9 @@
     "test": "node --test src/lib/*.test.ts",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "test:db": "node --test tests/db.test.mjs",
-    "check": "npm run typecheck && npm test && npm run test:db"
+    "check": "npm run typecheck && npm test && npm run test:db",
+    "test:e2e": "playwright test",
+    "test:e2e:cleanup": "node e2e/cleanup.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.11",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
