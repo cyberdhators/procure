@@ -4,6 +4,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
 import type { Browser, Page } from "@playwright/test";
+import { keyHash, newKey } from "../scripts/license.mjs";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const secret = process.env.SUPABASE_SECRET_KEY!;
@@ -32,6 +33,14 @@ export async function createUsers(users: TestUser[]) {
   }
 }
 
+/** Issues a 12-month license key for this run, as the owner script does. */
+export async function issueKey(run: string) {
+  const key = newKey();
+  const { error } = await admin().from("licenses").insert({ key_hash: keyHash(key), key_hint: key.slice(-5), customer: `e2e-${run}` });
+  if (error) throw new Error(`issue license: ${error.message}`);
+  return key;
+}
+
 /** Deletes every organisation the test users belong to (cascading all records), its files, and the users. */
 export async function cleanup(users: TestUser[]) {
   const sb = admin();
@@ -50,6 +59,8 @@ export async function cleanup(users: TestUser[]) {
     const { error } = await sb.from("orgs").delete().eq("id", org);
     if (error) console.warn(`Could not delete org ${org}: ${error.message}`);
   }
+  const run = users[0]?.email.match(/^e2e-([a-z0-9]+)-/)?.[1];
+  if (run) await sb.from("licenses").delete().eq("customer", `e2e-${run}`);
   for (const id of ids) {
     const { error } = await sb.auth.admin.deleteUser(id);
     if (error) console.warn(`Could not delete user ${id}: ${error.message}`);

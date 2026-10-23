@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { keyHash } from "../scripts/license.mjs";
 
 const MIGRATIONS = path.join(import.meta.dirname, "..", "supabase", "migrations");
 const ADMIN = "11111111-1111-1111-1111-111111111111"; // procurement officer, all roles
@@ -25,6 +26,13 @@ async function as(user, sql, params) {
   try { return await q(sql, params); } finally { await db.exec("reset role;"); }
 }
 const one = async (user, sql, params) => (await as(user, sql, params))[0];
+// Issues a license key as the platform owner would (service role).
+let keySeq = 0;
+async function issueKey(months = 12) {
+  const key = `CPRO-TEST${String(++keySeq).padStart(1, "0")}-AAAAA-BBBBB-CCCCC`;
+  await q("insert into licenses (key_hash, key_hint, customer, term_months) values (license_key_hash($1), right($1, 5), 'test', $2)", [key, months]);
+  return key;
+}
 const id = async (table, number) => (await q(`select id from ${table} where number = $1 and org_id = $2`, [number, org]))[0].id;
 
 before(async () => {
@@ -39,15 +47,59 @@ before(async () => {
       ('${APPROVER_B}', 'manager@ngo.example'), ('${FINANCE}', 'finance@ngo.example'),
       ('${OUTSIDER}', 'outsider@other.example');
   `);
+  // What Supabase grants by default on objects created in public.
+  await db.exec(`grant usage on schema public to anon, authenticated;
+    grant usage on schema auth to authenticated;
+    alter default privileges in schema public grant all on tables to anon, authenticated;
+    alter default privileges in schema public grant all on sequences to anon, authenticated;
+    alter default privileges in schema public grant execute on functions to anon, authenticated;`);
   for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort()) {
     await db.exec(readFileSync(path.join(MIGRATIONS, f), "utf8"));
   }
-  // What Supabase grants by default.
-  await db.exec(`grant usage on schema public to anon, authenticated;
-    grant all on all tables in schema public to authenticated;
-    grant all on all sequences in schema public to authenticated;
-    grant usage on schema auth to authenticated;`);
   org = (await one(ADMIN, "select create_demo_org('A. Procurement Officer') as id")).id;
+});
+
+test("an organisation needs an active license, activated by its administrator", async () => {
+  await assert.rejects(as(ADMIN, "select add_reference($1, 'donor', 'Donor X', null)", [org]), /no active C-Procurement license/);
+  await assert.rejects(as(ADMIN, "insert into departments (org_id, name) values ($1, 'Rogue')", [org]), /row-level security/);
+  await assert.rejects(as(ADMIN, "select submit_evaluation((select rfq_id from evaluators where org_id = $1 and not submitted), 'Finance Officer')", [org]), /no active C-Procurement license/);
+  await assert.rejects(as(ADMIN, "select activate_license($1, 'CPRO-NOPE0-NOPE0-NOPE0-NOPE0')", [org]), /not valid/);
+  await assert.rejects(as(OUTSIDER, "select activate_license($1, $2)", [org, await issueKey()]), /Only an administrator/);
+
+  // The owner script hashes keys exactly as the database does.
+  for (const k of ["CPRO-0A1B2-C3D4E-F5G6H-J7K8M", "cpro 0a1b2 c3d4e f5g6h j7k8m", "OAIB2C3D4EF5G6HJ7K8M"]) {
+    assert.equal((await q("select license_key_hash($1) h", [k]))[0].h, keyHash("CPRO-0A1B2-C3D4E-F5G6H-J7K8M"));
+  }
+  // Typed in lower case without dashes, with O for 0: still the same key.
+  const key = await issueKey();
+  const typed = key.toLowerCase().replaceAll("-", " ").replace("test1", "testl");
+  const until = new Date((await one(ADMIN, "select activate_license($1, $2) e", [org, typed])).e);
+  assert.ok(Math.abs(until.getTime() - Date.now() - 365 * 86_400_000) < 2 * 86_400_000);
+  await assert.rejects(as(ADMIN, "select activate_license($1, $2)", [org, key]), /already active/);
+
+  // A renewal adds its term after the current expiry.
+  const renewed = new Date((await one(ADMIN, "select activate_license($1, $2) e", [org, await issueKey(6)])).e);
+  assert.ok(renewed.getTime() - until.getTime() > 180 * 86_400_000);
+  const seen = await as(ADMIN, "select key_hint, expires_at from licenses order by expires_at");
+  assert.equal(seen.length, 2);
+  await assert.rejects(as(ADMIN, "select key_hash from licenses"), /permission denied/);
+  assert.equal((await q("select count(*)::int n from audit_events where org_id = $1 and action = 'License activated'", [org]))[0].n, 2);
+});
+
+test("revoked or expired licenses stop work; pricing requests are throttled", async () => {
+  await q("update licenses set revoked_at = now() where org_id = $1", [org]);
+  await assert.rejects(as(ADMIN, "select add_reference($1, 'donor', 'Donor X', null)", [org]), /no active/);
+  await q("update licenses set revoked_at = null, starts_at = now() - interval '2 years', expires_at = now() - interval '1 day' where org_id = $1", [org]);
+  await assert.rejects(as(ADMIN, "select add_reference($1, 'donor', 'Donor X', null)", [org]), /no active/);
+  await q("update licenses set starts_at = now() - interval '1 day', expires_at = now() + interval '1 year' where org_id = $1", [org]);
+
+  await db.exec("set role anon");
+  try {
+    for (let i = 0; i < 3; i++) await q("select request_license('NGO', 'Ama', 'Ama@NGO.example', 'GM', 'Interested')");
+    await assert.rejects(q("select request_license('NGO', 'Ama', 'ama@ngo.example', '', '')"), /already have your request/);
+    await assert.rejects(q("select request_license('NGO', 'Ama', 'not-an-email', '', '')"), /Check the organisation/);
+    await assert.rejects(q("select * from license_requests"), /permission denied/);
+  } finally { await db.exec("reset role"); }
 });
 
 test("one organisation per user", async () => {
@@ -116,6 +168,7 @@ test("requisition: org validation, routing by role, segregation of duties, budge
   });
   // Another org's department id is rejected.
   await as(OUTSIDER, "select create_org('Other NGO', 'O', 'Director')");
+  await as(OUTSIDER, "select activate_license((select org_id from members where user_id = auth.uid()), $1)", [await issueKey()]);
   const foreign = (await one(OUTSIDER, "select add_reference((select org_id from members where user_id = auth.uid()), 'department', 'Theirs', null) id")).id;
   await assert.rejects(as(ADMIN, "select save_requisition($1, $2, true)", [org, payload({ department_id: foreign })]), /not found in this organisation/);
   // Missing budget line blocks submission.

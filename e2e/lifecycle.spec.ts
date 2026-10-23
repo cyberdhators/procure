@@ -5,7 +5,7 @@
 //   npm run test:e2e            (against https://cprocurement.dev)
 //   E2E_BASE_URL=http://localhost:3000 npm run test:e2e
 import { test, expect, type Page } from "@playwright/test";
-import { cleanup, createUsers, makeUsers, signIn } from "./support";
+import { cleanup, createUsers, issueKey, makeUsers, signIn } from "./support";
 
 const run = Date.now().toString(36);
 const users = makeUsers(run);
@@ -31,12 +31,31 @@ test.afterEach(() => {
 const ok = (page: Page, text: string | RegExp) => expect(page.getByRole("status").filter({ hasText: text }).first()).toBeVisible();
 const stepDone = (page: Page, label: string) => expect(page.locator(".step.done", { hasText: label })).toBeVisible();
 
-test("officer creates a demo organisation and invites three colleagues", async ({ browser }) => {
+test("pricing page is public and takes license requests", async ({ page }) => {
+  await page.goto("/pricing", NAV);
+  await expect(page.getByText("USD 1,500")).toHaveCount(2);
+  await page.goto("/requisitions", NAV);
+  await expect(page).toHaveURL(/\/login/);
+});
+
+test("officer creates a demo organisation, activates a license and invites three colleagues", async ({ browser }) => {
   const p = (pages.officer = await signIn(browser, users.officer, problems));
   await expect(p).toHaveURL(/\/onboarding/);
   await p.getByLabel("Your name").fill(users.officer.name);
   await p.getByRole("button", { name: "Load demo organisation" }).click();
+
+  // No work until a license is active.
+  await expect(p.getByRole("heading", { name: "Activate your license" })).toBeVisible();
+  await p.goto("/requisitions", NAV);
+  await expect(p).toHaveURL(/\/activate/);
+  await p.getByLabel("License key").fill("CPRO-00000-00000-00000-00000");
+  await p.getByRole("button", { name: "Activate" }).click();
+  await expect(p.locator(".error[role=alert]")).toContainText("not valid");
+  await p.getByLabel("License key").fill((await issueKey(run)).toLowerCase());
+  await p.getByRole("button", { name: "Activate" }).click();
   await expect(p.getByRole("heading", { name: "Management dashboard" })).toBeVisible();
+  await p.goto("/settings#license", NAV);
+  await expect(p.locator("#license").getByText("Active")).toBeVisible();
 
   await p.goto("/settings", NAV);
   const invite = p.locator("section").filter({ has: p.getByRole("heading", { name: "Invite a member" }) });

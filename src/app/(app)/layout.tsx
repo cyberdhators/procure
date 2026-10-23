@@ -1,10 +1,13 @@
 import { LogOut } from "lucide-react";
+import Link from "next/link";
 import { getContext, getCounts } from "@/lib/context";
+import { daysUntil, formatDate } from "@/lib/format";
 import { Nav } from "@/components/nav";
 import { signOut } from "../login/actions";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { member, can } = await getContext();
+  const { member, can, licensedUntil } = await getContext();
+  const daysLeft = daysUntil(licensedUntil);
   const c = await getCounts();
   const counts = { "/approvals": c.approvals, "/goods-receipts": c.grns, "/invoices": c.exceptions };
   const initials = member.display_name.split(/[\s.]+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -33,7 +36,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </form>
         </div>
       </aside>
-      <div className="main">{children}</div>
+      <div className="main">
+        {daysLeft <= 30 && (
+          <div className="license-bar" role="status">
+            Your C-Procurement license ends on {formatDate(licensedUntil)}
+            {can("admin") ? <> · <Link href="/settings#license">Enter a renewal key</Link></> : ". Ask an administrator to renew it."}
+          </div>
+        )}
+        {children}
+      </div>
     </div>
   );
 }

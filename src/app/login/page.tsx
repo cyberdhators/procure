@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CircleCheck } from "lucide-react";
 import { ActionForm } from "@/components/action-form";
 import { Submit } from "@/components/submit";
@@ -55,6 +56,9 @@ export default function LoginPage() {
               </div>
             </div>
           </ActionForm>
+          <p style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 22 }}>
+            Each organisation needs a license, USD 1,500 per year. <Link href="/pricing">See pricing</Link>.
+          </p>
         </div>
       </section>
     </main>

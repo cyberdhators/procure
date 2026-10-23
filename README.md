@@ -19,6 +19,23 @@ Every transition is a `SECURITY DEFINER` Postgres function (`supabase/migrations
 the rule, changes state and writes the audit entry in one transaction. The audit log rejects updates and deletes.
 Money is stored in integer cents. Dashboards and reports aggregate in SQL.
 
+## Licensing
+
+Each organisation needs an active license (USD 1,500 per year, shown on the public `/pricing` page). Without one,
+members can sign in and read their records, but every workflow and admin write is refused by the database, and the
+app sends users to `/activate`. Keys are issued by the platform owner and stored only as SHA-256 hashes:
+
+```
+npm run license -- issue --customer "Organisation name"   # prints a key once; --months 12, --count 1
+npm run license -- list                                   # every key, its organisation and expiry
+npm run license -- revoke ABCDE                           # by the last 5 characters of the key
+npm run license -- requests                               # requests sent from the pricing page
+```
+
+An administrator enters the key on `/activate` (or **Settings → License** to renew). A renewal starts when the
+current license ends. To be emailed on each pricing-page request, set `RESEND_API_KEY` and `LICENSE_REQUEST_EMAIL`
+in Vercel.
+
 ## Setup
 
 1. Create a Supabase project and set, locally in `.env.local` and in Vercel:

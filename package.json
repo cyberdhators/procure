@@ -13,7 +13,8 @@
     "test:db": "node --test tests/db.test.mjs",
     "check": "npm run typecheck && npm test && npm run test:db",
     "test:e2e": "playwright test",
-    "test:e2e:cleanup": "node e2e/cleanup.mjs"
+    "test:e2e:cleanup": "node e2e/cleanup.mjs",
+    "license": "node scripts/license.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

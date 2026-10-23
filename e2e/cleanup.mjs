@@ -40,6 +40,8 @@ for (const org of new Set((memberships ?? []).map((m) => m.org_id))) {
   const { error } = await sb.from("orgs").delete().eq("id", org);
   console.log(error ? `org ${org}: ${error.message}` : `deleted test org ${org}`);
 }
+const { count } = await sb.from("licenses").delete({ count: "exact" }).like("customer", "e2e-%");
+console.log(`deleted test licenses: ${count ?? 0}`);
 for (const u of testUsers) {
   const { error } = await sb.auth.admin.deleteUser(u.id);
   console.log(error ? `${u.email}: ${error.message}` : `deleted ${u.email}`);

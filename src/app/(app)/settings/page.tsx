@@ -8,6 +8,7 @@ import {
 } from "../actions";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { activateLicense } from "../../activate/actions";
 
 export const metadata = { title: "Settings" };
 
@@ -31,7 +32,7 @@ function RoleChecks({ selected = [], idPrefix }: { selected?: string[]; idPrefix
 }
 
 export default async function Settings() {
-  const { supabase, orgId, user, can } = await getContext();
+  const { supabase, orgId, user, can, member, licensedUntil } = await getContext();
   if (!can("admin")) {
     return (
       <>
@@ -58,6 +59,39 @@ export default async function Settings() {
       <Topbar crumbs={[{ label: "Settings" }]} />
       <div className="content">
         <PageHead title="Settings" sub="Every change on this page is recorded in the audit log." />
+
+        <section id="license" style={{ scrollMarginTop: 80 }}>
+          <Card title="License" note={`Licensed until ${formatDate(licensedUntil)}`}>
+            <div className="table-wrap" style={{ marginBottom: 16 }}>
+              <table className="table">
+                <thead><tr><th>Key ending</th><th>Term</th><th>From</th><th>Until</th><th>Status</th></tr></thead>
+                <tbody>
+                  {[...(member.orgs?.licenses ?? [])].sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at))).map((l) => {
+                    const now = Date.now();
+                    const status = l.revoked_at ? "cancelled" : Date.parse(l.expires_at!) <= now ? "expired"
+                      : Date.parse(l.starts_at!) > now ? "pending" : "valid";
+                    return (
+                      <tr key={l.key_hint + l.starts_at}>
+                        <td style={{ fontFamily: "ui-monospace, monospace" }}>…{l.key_hint}</td><td>{l.term_months} months</td>
+                        <td>{formatDate(l.starts_at)}</td><td>{formatDate(l.expires_at)}</td>
+                        <td><Badge tone={status === "valid" ? "green" : status === "pending" ? "grey" : "red"}>
+                          {status === "valid" ? "Active" : status === "pending" ? "Starts later" : status === "expired" ? "Expired" : "Revoked"}
+                        </Badge></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <ActionForm action={activateLicense} className="actions" style={{ alignItems: "flex-end" }}>
+              <input type="hidden" name="from" value="settings" />
+              <div style={{ flex: "1 1 320px" }}><label className="lbl" htmlFor="license_key">Renewal key</label>
+                <input className="input" id="license_key" name="license_key" placeholder="CPRO-XXXXX-XXXXX-XXXXX-XXXXX" autoComplete="off" spellCheck={false} required /></div>
+              <Submit primary>Activate renewal</Submit>
+              <a className="btn" href="/pricing">Pricing</a>
+            </ActionForm>
+          </Card>
+        </section>
 
         <Card title="Procurement controls">
           <ActionForm action={setOrgControls} className="actions" style={{ alignItems: "flex-end" }}>

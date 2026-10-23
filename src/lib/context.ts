@@ -2,6 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "./supabase/server";
+import { licensedUntil, type License } from "./license";
 
 /**
  * Without generated database types, supabase-js infers embedded relations from
@@ -19,28 +20,41 @@ export type Member = {
   title: string;
   office: string;
   roles: Role[];
-  orgs: { name: string } | null;
+  orgs: { name: string; licenses: License[] } | null;
 };
 
-/** Signed-in user, their membership and an RLS-scoped Supabase client. Cached per request. */
-export const getContext = cache(async () => {
+const MEMBER_FIELDS =
+  "org_id, display_name, title, office, roles, orgs(name, licenses(key_hint, term_months, starts_at, expires_at, revoked_at))";
+
+/** The signed-in user's membership, or null. Shared by the app and the activation page. */
+export async function getMembership() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-
   const { data: member } = await supabase
     .from("members")
-    .select("org_id, display_name, title, office, roles, orgs(name)")
+    .select(MEMBER_FIELDS)
     .eq("user_id", user.id)
     .order("created_at")
     .limit(1)
     .maybeSingle<Member>();
+  return { supabase, user, member, licensedUntil: member ? licensedUntil(member.orgs?.licenses) : null };
+}
+
+/**
+ * Signed-in user, their membership and an RLS-scoped Supabase client. Sends
+ * users without an organisation to onboarding and organisations without an
+ * active license to activation. Cached per request.
+ */
+export const getContext = cache(async () => {
+  const { supabase, user, member, licensedUntil } = await getMembership();
   if (!member) redirect("/onboarding");
+  if (!licensedUntil) redirect("/activate");
 
   const can = (role: Role) => member.roles.includes(role) || member.roles.includes("admin");
-  return { supabase: supabase as unknown as Db, user, member, orgId: member.org_id, can };
+  return { supabase: supabase as unknown as Db, user, member, orgId: member.org_id, can, licensedUntil };
 });
 
 /** Work-queue counts shown in the sidebar and the notification bell. Cached per request. */
