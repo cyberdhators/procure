@@ -20,6 +20,12 @@ export async function proxy(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const path = request.nextUrl.pathname;
   const isPublic = path.startsWith("/login") || path.startsWith("/auth") || path.startsWith("/pricing");
+  // Signed-out visitors to the home page see the landing page (with pricing).
+  if (!data?.claims && path === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/pricing";
+    return NextResponse.rewrite(url);
+  }
   if (!data?.claims && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

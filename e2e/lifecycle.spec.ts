@@ -31,8 +31,10 @@ test.afterEach(() => {
 const ok = (page: Page, text: string | RegExp) => expect(page.getByRole("status").filter({ hasText: text }).first()).toBeVisible();
 const stepDone = (page: Page, label: string) => expect(page.locator(".step.done", { hasText: label })).toBeVisible();
 
-test("pricing page is public and takes license requests", async ({ page }) => {
-  await page.goto("/pricing", NAV);
+test("signed-out visitors land on the product and pricing page", async ({ page }) => {
+  await page.goto("/", NAV);
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Procurement your donors and auditors can trust." })).toBeVisible();
   await expect(page.getByText("USD 1,500")).toHaveCount(2);
   await page.goto("/requisitions", NAV);
   await expect(page).toHaveURL(/\/login/);

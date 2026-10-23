@@ -1,15 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CircleCheck } from "lucide-react";
+import { CircleCheck, ClipboardCheck, FileSearch, Route, ShieldCheck } from "lucide-react";
 import { ActionForm } from "@/components/action-form";
 import { Submit } from "@/components/submit";
 import { PRICE_PER_YEAR_USD } from "@/lib/license";
 import { requestLicense } from "./actions";
 
 export const metadata: Metadata = {
-  title: "Pricing",
+  title: { absolute: "Cyber Procurement · Procurement for NGOs and donor-funded organisations" },
   description: `Cyber Procurement is USD ${PRICE_PER_YEAR_USD.toLocaleString("en-US")} per organisation per year.`,
 };
+
+const FEATURES = [
+  { icon: Route, title: "Approvals that route themselves", text: "Requisitions go to the right approvers by value, category and donor, and are blocked when the budget line cannot cover them." },
+  { icon: FileSearch, title: "Fair, documented sourcing", text: "RFQs to approved vendors, sealed bids until closing, panel scoring and a justified award recommendation." },
+  { icon: ClipboardCheck, title: "Orders, deliveries and invoices that match", text: "Purchase orders, goods receipt inspection and three-way matching before anything is paid." },
+  { icon: ShieldCheck, title: "Ready for donors and auditors", text: "Segregation of duties enforced at every step, an append-only audit log and donor-ready spend reports." },
+];
 
 const INCLUDED = [
   "Unlimited users and records for one organisation",
@@ -45,12 +52,39 @@ export default function Pricing() {
             <div className="brand-sub">C-PROCUREMENT</div>
           </div>
         </Link>
-        <Link href="/login" className="btn btn-sm">Sign in</Link>
+        <nav className="actions">
+          <a href="#features" className="landing-link">Features</a>
+          <a href="#pricing" className="landing-link">Pricing</a>
+          <Link href="/login" className="btn btn-sm">Sign in</Link>
+        </nav>
       </header>
 
-      <section className="pricing-hero">
-        <h1>One plan. Everything included.</h1>
-        <p className="page-sub">Procurement your donors and auditors can trust, for a single annual fee per organisation.</p>
+      <section className="landing-hero">
+        <div className="landing-eyebrow">C-PROCUREMENT</div>
+        <h1>Procurement your donors and auditors can trust.</h1>
+        <p className="page-sub">
+          One place for every requisition, quotation, order, delivery and invoice, with segregation of duties
+          built in. Built for NGOs and donor-funded organisations.
+        </p>
+        <div className="actions" style={{ justifyContent: "center", marginTop: 24 }}>
+          <a href="#request" className="btn btn-primary">Request a license</a>
+          <a href="#pricing" className="btn">See pricing</a>
+        </div>
+      </section>
+
+      <section id="features" className="landing-features">
+        {FEATURES.map(({ icon: Icon, title, text }) => (
+          <div className="card" key={title}>
+            <div className="kpi-icon" style={{ marginBottom: 12 }}><Icon size={18} aria-hidden /></div>
+            <h2 style={{ fontSize: 15.5, marginBottom: 6 }}>{title}</h2>
+            <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)" }}>{text}</p>
+          </div>
+        ))}
+      </section>
+
+      <section id="pricing" className="pricing-hero">
+        <h2>One plan. Everything included.</h2>
+        <p className="page-sub">A single annual fee per organisation.</p>
       </section>
 
       <section className="pricing-grid">
@@ -109,6 +143,10 @@ export default function Pricing() {
           </div>
         </ActionForm>
       </section>
+
+      <footer className="landing-foot">
+        Cyber Procurement · <Link href="/login">Sign in</Link> · Developed by <strong>cyberdhators</strong>
+      </footer>
     </main>
   );
 }
